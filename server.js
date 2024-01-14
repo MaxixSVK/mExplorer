@@ -40,6 +40,10 @@ app.use((req, res, next) => {
     next();
 });
 
+app.get('/', (req, res) => {
+    res.send('Welcome to Manga Explorer');
+});
+
 app.get('/check-token', (req, res) => {
     res.status(200).send('Token is valid');
 });
