@@ -1,34 +1,70 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 require('dotenv').config();
 
+//MONGODB
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('MongoDB Connected...'))
     .catch(err => console.log(err));
 
+//SCHEMAS
+const animeSchema = new mongoose.Schema({
+    name: String,
+    episodes: Number,
+});
+
 const mangaSchema = new mongoose.Schema({
-    id: {
-        type: Number,
-        required: true
-    },
-    name: {
-        type: String,
-        required: true
-    },
-    startedReading: {
-        type: Date,
-    },
-    endedReading: {
-        type: Date
-    },
+    name: String,
+    author: String,
     chapters: [{
-        name: String,
-        date: Date
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Chapter'
+    }],
+});
+
+const chapterSchema = new mongoose.Schema({
+    name: String,
+});
+
+const userSchema = new mongoose.Schema({
+    name: String,
+    email: String,
+    password: String,
+    anime: [{
+        animeInfoId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Anime'
+        },
+        startedWatching: Date,
+        endedWatching: Date,
+        episodesWatched: Number,
+    }],
+    manga: [{
+        mangaInfoId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Manga'
+        },
+        startedReading: Date,
+        endedReading: Date,
+        chaptersRead: [{
+            chapter: {
+                nameId: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: 'Chapter'
+                },
+                dateRead: Date
+            }
+        }]
     }]
 });
 
+const Anime = mongoose.model('Anime', animeSchema);
 const Manga = mongoose.model('Manga', mangaSchema);
+const Chapter = mongoose.model('Chapter', chapterSchema);
+const User = mongoose.model('User', userSchema);
 
+//EXPRESS
 const app = express();
 app.use(express.json());
 
@@ -48,55 +84,117 @@ app.get('/check-token', (req, res) => {
     res.status(200).send('Token is valid');
 });
 
-app.get('/mangas', async (req, res) => {
-    const mangas = await Manga.find({}, 'id name'); 
-    res.send(mangas);
-});
-
-app.get('/manga/:id', async (req, res) => {
-    const manga = await Manga.findOne({ id: req.params.id });
-    if (!manga) return res.status(404).send('Manga not found');
-    res.send(manga);
-});
-
-
-app.post('/manga', async (req, res) => {
-    const manga = new Manga({
-        id: req.body.id,
-        name: req.body.name,
-        startedReading: req.body.startedReading,
-        endedReading: req.body.endedReading,
-        chapters: req.body.chapters
-    });
+const salt = bcrypt.genSalt(10);
+// TODO HASH PASSWORD
+app.post('/register', async (req, res) => {
     try {
-        await manga.save();
-        res.send(manga);
-    } catch (ex) {
-        console.log(ex.message);
+        const user = new User({
+            name: req.body.username,
+            email: req.body.email,
+            password: req.body.password,
+            anime: [],
+            manga: []
+        });
+        await user.save();
+        res.send(user);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server error');
     }
 });
 
-app.put('/manga/:id', async (req, res) => {
-    const manga = await Manga.findOne({ id: req.params.id });
-    if (!manga) return res.status(404).send('Manga not found');
-
-    manga.id = req.body.id;
-    manga.name = req.body.name;
-    manga.startedReading = req.body.startedReading;
-    manga.endedReading = req.body.endedReading;
-    manga.chapters = req.body.chapters;
+app.get('/mangauserlist', async (req, res) => {
     try {
-        await manga.save();
-        res.send(manga);
-    } catch (ex) {
-        console.log(ex.message);
+        let user = await User.findById(req.headers.userid)
+            .populate('manga.mangaInfoId', 'name author -_id')
+            .populate('manga.chaptersRead.chapter.nameId', 'name -_id')
+            .select('-manga._id -manga.chaptersRead._id')
+            .exec();
+
+        if (!user) {
+            return res.status(404).send('User not found');
+        }
+
+        user = user.toObject();
+        user.manga.forEach(manga => {
+            if (manga.startedReading) {
+                manga.startedReading = manga.startedReading.toISOString().split('T')[0];
+            }
+            if (manga.endedReading) {
+                manga.endedReading = manga.endedReading.toISOString().split('T')[0];
+            }
+            manga.chaptersRead.forEach(chapter => {
+                if (chapter.dateRead) {
+                    chapter.dateRead = chapter.dateRead.toISOString().split('T')[0];
+                }
+            });
+        });
+
+        res.json(user.manga);
+    } catch (err) {
+        console.log(err);
+        res.status(500).send('Server error');
     }
 });
 
-app.delete('/manga/:id', async (req, res) => {
-    const manga = await Manga.findOneAndDelete({ id: req.params.id });
-    if (!manga) return res.status(404).send('Manga not found');
-    res.send('Manga deleted successfully');
+app.post('/mangauserupload', async (req, res) => {
+    try {
+        const user = await User.findById(req.headers.userid);
+        if (!user) {
+            return res.status(404).send('User not found');
+        }
+
+        const mangaEntry = {
+            mangaInfoId: req.body.mangaId,
+            startedReading: req.body.startedReading,
+            endedReading: req.body.endedReading,
+            chaptersRead: req.body.chaptersRead
+        };
+
+        user.manga.push(mangaEntry);
+        await user.save();
+
+        res.send(user);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server error');
+    }
+});
+
+app.post('/mangaupload', async (req, res) => {
+    try {
+        const chapterIds = await Promise.all(req.body.chapters.map(async chapterName => {
+            const chapter = new Chapter({ name: chapterName });
+            await chapter.save();
+            return chapter._id;
+        }));
+
+        const manga = new Manga({
+            name: req.body.name,
+            author: req.body.author,
+            chapters: chapterIds
+        });
+
+        await manga.save();
+        res.send(manga);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server error');
+    }
+});
+
+app.post('/animeupload', async (req, res) => {
+    try {
+        const anime = new Anime({
+            name: req.body.name,
+            episodes: req.body.episodes
+        });
+        await anime.save();
+        res.send(anime);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server error');
+    }
 });
 
 const port = 3000;
