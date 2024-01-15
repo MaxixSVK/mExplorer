@@ -68,8 +68,12 @@ app.post('/manga', async (req, res) => {
         endedReading: req.body.endedReading,
         chapters: req.body.chapters
     });
-    await manga.save();
-    res.send(manga);
+    try {
+        await manga.save();
+        res.send(manga);
+    } catch (ex) {
+        console.log(ex.message);
+    }
 });
 
 app.put('/manga/:id', async (req, res) => {
@@ -81,8 +85,12 @@ app.put('/manga/:id', async (req, res) => {
     manga.startedReading = req.body.startedReading;
     manga.endedReading = req.body.endedReading;
     manga.chapters = req.body.chapters;
-    await manga.save();
-    res.send(manga);
+    try {
+        await manga.save();
+        res.send(manga);
+    } catch (ex) {
+        console.log(ex.message);
+    }
 });
 
 app.delete('/manga/:id', async (req, res) => {

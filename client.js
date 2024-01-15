@@ -10,8 +10,8 @@ const rl = readline.createInterface({
 });
 
 const BASE_URL = 'http://localhost:3000';
-
-console.log('Welcome to Manga Explorer\nBy: Maxix');
+console.clear();
+console.log('Welcome to mExplorer By: Maxix');
 
 function requestToken() {
     rl.question('Enter your token: ', (token) => {
@@ -19,6 +19,8 @@ function requestToken() {
 
         axios.get(`${BASE_URL}/check-token`)
             .then(() => {
+                console.clear();
+                console.log('Welcome to mExplorer By: Maxix\nLogged in as: Maxix\n');
                 console.log('0.     Show all options');
                 console.log('1.     Get a manga list');
                 console.log('2.     Save a manga list');
@@ -30,6 +32,7 @@ function requestToken() {
             })
             .catch((error) => {
                 if (error.response && error.response.status === 403) {
+                    console.clear();
                     console.log('The token is wrong. Please try again.');
                     requestToken();
                 } else {
@@ -206,6 +209,7 @@ function menu() {
                 break;
             case '998':
                 console.clear();
+                console.log('Welcome to mExplorer By: Maxix\nLogged in as: Maxix\n');
                 menu();
                 break;
             case '999':
