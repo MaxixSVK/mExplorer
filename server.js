@@ -41,18 +41,18 @@ const userSchema = new mongoose.Schema({
         episodesWatched: Number,
     }],
     manga: [{
-        mangaInfoId: {
+        mangaInfo: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Manga'
         },
         startedReading: Date,
         endedReading: Date,
         chaptersRead: [{
-            chapter: {
-                nameId: {
-                    type: mongoose.Schema.Types.ObjectId,
-                    ref: 'Chapter'
-                },
+            name: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Chapter'
+            },
+            data: {
                 dateRead: Date
             }
         }]
@@ -106,15 +106,14 @@ app.post('/register', async (req, res) => {
 app.get('/mangauserlist', async (req, res) => {
     try {
         let user = await User.findById(req.headers.userid)
-            .populate('manga.mangaInfoId', 'name author -_id')
-            .populate('manga.chaptersRead.chapter.nameId', 'name -_id')
+            .populate('manga.mangaInfo', 'name author -_id')
+            .populate('manga.chaptersRead.name', 'name -_id')
             .select('-manga._id -manga.chaptersRead._id')
             .exec();
 
         if (!user) {
             return res.status(404).send('User not found');
         }
-
         user = user.toObject();
         user.manga.forEach(manga => {
             if (manga.startedReading) {
@@ -137,6 +136,42 @@ app.get('/mangauserlist', async (req, res) => {
     }
 });
 
+app.get('/mangauserlist/:mangaid', async (req, res) => {
+    try {
+        let mangaid = req.params.mangaid;
+        let user = await User.findById(req.headers.userid);
+
+        if (!user) {
+            return res.status(404).send('User not found');
+        }
+
+        user = user.toObject();
+        let manga = user.manga.find(manga => manga.mangaInfo._id == mangaid);
+        if (!manga) {
+            return res.status(404).send('Manga not found');
+        }
+
+        if (manga.startedReading) {
+            manga.startedReading = manga.startedReading.toISOString().split('T')[0];
+        }
+        if (manga.endedReading) {
+            manga.endedReading = manga.endedReading.toISOString().split('T')[0];
+        }
+
+        manga.chaptersRead.forEach(chapter => {
+            if (chapter.dateRead) {
+                chapter.dateRead = chapter.dateRead.toISOString().split('T')[0];
+            }
+        });
+        //TODO - id's to names
+        res.json(manga);
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).send('Server error');
+    }
+});
+
 app.post('/mangauserupload', async (req, res) => {
     try {
         const user = await User.findById(req.headers.userid);
@@ -145,7 +180,7 @@ app.post('/mangauserupload', async (req, res) => {
         }
 
         const mangaEntry = {
-            mangaInfoId: req.body.mangaId,
+            mangaInfo: req.body.mangaInfo,
             startedReading: req.body.startedReading,
             endedReading: req.body.endedReading,
             chaptersRead: req.body.chaptersRead
@@ -154,7 +189,7 @@ app.post('/mangauserupload', async (req, res) => {
         user.manga.push(mangaEntry);
         await user.save();
 
-        res.send(user);
+        res.send(user.manga[user.manga.length - 1]);
     } catch (err) {
         console.error(err);
         res.status(500).send('Server error');
