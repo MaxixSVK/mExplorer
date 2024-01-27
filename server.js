@@ -31,6 +31,7 @@ const userSchema = new mongoose.Schema({
     name: String,
     email: String,
     password: String,
+    token: String,
     anime: [{
         animeInfoId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -80,18 +81,16 @@ app.get('/', (req, res) => {
     res.send('Welcome to Manga Explorer');
 });
 
-app.get('/check-token', (req, res) => {
-    res.status(200).send('Token is valid');
-});
-
-const salt = bcrypt.genSalt(10);
-// TODO HASH PASSWORD
 app.post('/register', async (req, res) => {
     try {
+        const salt = await bcrypt.genSalt(10);
+        const password = await bcrypt.hash(req.body.password, salt);
+        const token = await bcrypt.hash(req.body.username + req.body.email, salt);
         const user = new User({
             name: req.body.username,
             email: req.body.email,
-            password: req.body.password,
+            token: token,
+            password: password,
             anime: [],
             manga: []
         });
@@ -109,25 +108,11 @@ app.get('/mangauserlist', async (req, res) => {
             .populate('manga.mangaInfo', 'name author -_id')
             .populate('manga.chaptersRead.name', 'name -_id')
             .select('-manga._id -manga.chaptersRead._id')
-            .exec();
+            .exec()
 
         if (!user) {
             return res.status(404).send('User not found');
         }
-        user = user.toObject();
-        user.manga.forEach(manga => {
-            if (manga.startedReading) {
-                manga.startedReading = manga.startedReading.toISOString().split('T')[0];
-            }
-            if (manga.endedReading) {
-                manga.endedReading = manga.endedReading.toISOString().split('T')[0];
-            }
-            manga.chaptersRead.forEach(chapter => {
-                if (chapter.dateRead) {
-                    chapter.dateRead = chapter.dateRead.toISOString().split('T')[0];
-                }
-            });
-        });
 
         res.json(user.manga);
     } catch (err) {
